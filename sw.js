@@ -2,7 +2,7 @@
 // Strategi: nätet först för appens egna filer (så uppdateringar slår igenom
 // direkt), cachen som reserv. Supabase och Libris cachas aldrig.
 
-const CACHE = "bokhyllan-v1";
+const CACHE = "bokhyllan-v2";
 const SHELL = [
   "./", "./index.html", "./css/app.css", "./manifest.webmanifest",
   "./vendor/supabase.js", "./icons/icon-192.png", "./icons/icon-512.png",

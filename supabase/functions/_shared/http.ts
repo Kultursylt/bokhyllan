@@ -5,7 +5,7 @@
 // därför även här — en inloggad användare kan bara läsa och skriva sitt eget
 // biblioteks rader, oavsett vilket id hen skickar in.
 
-import { createClient, SupabaseClient, User } from "npm:@supabase/supabase-js@2.45.4";
+import { createClient, SupabaseClient, User } from "npm:@supabase/supabase-js@2.118.0";
 
 export const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -25,12 +25,34 @@ export class HttpError extends Error {
   }
 }
 
+/**
+ * Projektets publika nyckel. Äldre projekt har SUPABASE_ANON_KEY; projekt med
+ * de nya nycklarna kan i stället ha SUPABASE_PUBLISHABLE_KEY(S). Alla fungerar.
+ */
+function publicKey(): string {
+  const legacy = Deno.env.get("SUPABASE_ANON_KEY");
+  if (legacy) return legacy;
+  const single = Deno.env.get("SUPABASE_PUBLISHABLE_KEY");
+  if (single) return single;
+  const many = Deno.env.get("SUPABASE_PUBLISHABLE_KEYS");
+  if (many) {
+    try {
+      const parsed = JSON.parse(many);
+      const first = Array.isArray(parsed) ? parsed[0] : parsed.default ?? Object.values(parsed)[0];
+      if (typeof first === "string") return first;
+    } catch {
+      return many.split(",")[0].trim();
+    }
+  }
+  throw new HttpError(500, "Hittar ingen publik nyckel i funktionens miljö.");
+}
+
 /** Skapar en Supabase-klient som agerar som den inloggade användaren. */
 export async function asCaller(req: Request): Promise<{ sb: SupabaseClient; user: User }> {
   const auth = req.headers.get("Authorization") ?? "";
   if (!auth.startsWith("Bearer ")) throw new HttpError(401, "Logga in först.");
 
-  const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_ANON_KEY")!, {
+  const sb = createClient(Deno.env.get("SUPABASE_URL")!, publicKey(), {
     global: { headers: { Authorization: auth } },
     auth: { persistSession: false },
   });
