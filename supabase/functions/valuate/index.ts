@@ -1,0 +1,118 @@
+// Uppskattar begagnatvärdet på en bok med webbsökning på svenska
+// begagnat- och bokhandelssajter, och sparar resultatet med källor.
+//
+// POST { work_id: uuid }
+// Svar: valuations-raden.
+//
+// Kostnad: några webbsökningar per bok (Anthropic tar ca 0,10 kr per sökning)
+// plus tokens — räkna med under en krona per bok.
+
+import { asCaller, HttpError, json, serve } from "../_shared/http.ts";
+import { claude, toolInput } from "../_shared/claude.ts";
+
+const DOMAINS = [
+  "bokborsen.se", "antikvariat.net", "studentapan.se", "tradera.com", "blocket.se",
+  "adlibris.com", "bokus.com", "akademibokhandeln.se", "campusbokhandeln.se", "abebooks.com",
+];
+
+const REPORT = {
+  name: "report_value",
+  description: "Rapportera den uppskattade begagnatvärderingen.",
+  input_schema: {
+    type: "object",
+    properties: {
+      low: { type: "integer", description: "Låg uppskattning i kronor för ett normalt begagnat ex. 0 om osäljbar." },
+      high: { type: "integer", description: "Hög uppskattning i kronor." },
+      best_channel: {
+        type: "string",
+        enum: ["Bokbörsen", "Antikvariat", "Studentapan", "Tradera", "Blocket", "Bokcirkel/loppis", "Ej värd att sälja"],
+      },
+      confidence: { type: "string", enum: ["låg", "medel", "hög"] },
+      summary: { type: "string", description: "1–3 meningar: vad priset bygger på, upplagans betydelse, efterfrågan." },
+    },
+    required: ["low", "high", "best_channel", "confidence", "summary"],
+  },
+};
+
+serve(async (req, body) => {
+  const workId = String(body.work_id ?? "");
+  if (!workId) throw new HttpError(400, "work_id saknas.");
+  const { sb } = await asCaller(req);
+
+  const { data: w, error } = await sb.from("works")
+    .select("id, library_id, title, authors, year, publisher, isbn")
+    .eq("id", workId).maybeSingle();
+  if (error) throw new HttpError(500, error.message);
+  if (!w) throw new HttpError(404, "Boken finns inte i ditt bibliotek.");
+
+  const desc = [
+    `Titel: ${w.title}`,
+    w.authors?.length ? `Författare: ${w.authors.join(", ")}` : "",
+    w.year ? `Utgivningsår: ${w.year}` : "",
+    w.publisher ? `Förlag: ${w.publisher}` : "",
+    w.isbn ? `ISBN: ${w.isbn}` : "",
+  ].filter(Boolean).join("\n");
+
+  const system = `Du värderar begagnade böcker för en privatperson i Sverige.
+Sök efter faktiska annonser och priser för just den här boken, helst samma upplaga/ISBN.
+Ange vad en säljare realistiskt får för ett ex i normalt skick — inte nypris och inte
+det högsta utropspriset. Kurslitteratur säljs bäst via Studentapan om den är aktuell
+upplaga. Ovanliga eller äldre böcker via Bokbörsen/antikvariat. Är boken vanlig och
+billig: säg det ärligt (best_channel "Ej värd att sälja" eller "Bokcirkel/loppis").
+Hittar du inga jämförbara priser: gör en försiktig bedömning och sätt confidence "låg".
+Avsluta alltid med verktyget report_value.`;
+
+  const tools = [
+    {
+      type: "web_search_20250305",
+      name: "web_search",
+      max_uses: 4,
+      allowed_domains: DOMAINS,
+      user_location: { type: "approximate", country: "SE", timezone: "Europe/Stockholm" },
+    },
+    REPORT,
+  ];
+
+  // deno-lint-ignore no-explicit-any
+  const messages: any[] = [{ role: "user", content: `Värdera den här boken:\n${desc}` }];
+  // deno-lint-ignore no-explicit-any
+  let response: any = null;
+  // deno-lint-ignore no-explicit-any
+  const sources = new Map<string, any>();
+
+  for (let turn = 0; turn < 4; turn++) {
+    response = await claude({ system, messages, tools, max_tokens: 3000 });
+    for (const b of response.content ?? []) {
+      if (b.type === "web_search_tool_result" && Array.isArray(b.content)) {
+        for (const r of b.content) {
+          if (r?.url && !sources.has(r.url)) sources.set(r.url, { url: r.url, title: r.title ?? r.url });
+        }
+      }
+    }
+    if (toolInput(response, REPORT.name)) break;
+    // Långa sökningar kan pausas av API:et; skicka tillbaka svaret oförändrat och fortsätt.
+    messages.push({ role: "assistant", content: response.content });
+    if (response.stop_reason !== "pause_turn") {
+      messages.push({ role: "user", content: "Rapportera din bedömning nu med report_value." });
+    }
+  }
+
+  const v = toolInput(response, REPORT.name);
+  if (!v) throw new Error("Värderingen gav inget svar — försök igen.");
+
+  const row = {
+    library_id: w.library_id,
+    work_id: w.id,
+    low: Math.max(0, Math.round(Number(v.low) || 0)),
+    high: Math.max(0, Math.round(Number(v.high) || 0)),
+    best_channel: String(v.best_channel ?? ""),
+    confidence: ["låg", "medel", "hög"].includes(v.confidence) ? v.confidence : "låg",
+    summary: String(v.summary ?? ""),
+    sources: [...sources.values()].slice(0, 8),
+  };
+  if (row.high < row.low) [row.low, row.high] = [row.high, row.low];
+
+  const { data: saved, error: insErr } = await sb.from("valuations").insert(row).select().single();
+  if (insErr) throw new HttpError(500, insErr.message);
+  return json(saved);
+});
