@@ -7,7 +7,7 @@
 // avgörs av katalogen (Libris, annars Open Library) — inte av modellens minne.
 
 import { asCaller, HttpError, json, serve } from "../_shared/http.ts";
-import { claude, imageBlock, toolInput } from "../_shared/claude.ts";
+import { callTool, imageBlock } from "../_shared/claude.ts";
 import { Candidate, findCandidates, isConfident } from "../_shared/catalog.ts";
 
 const DEFAULT_CATEGORIES = [
@@ -109,17 +109,14 @@ serve(async (req, body) => {
     const bytes = new Uint8Array(await file.arrayBuffer());
     const mediaType = file.type && file.type.startsWith("image/") ? file.type : "image/jpeg";
 
-    const response = await claude({
-      max_tokens: 8000,
-      tools: [TOOL],
-      tool_choice: { type: "tool", name: TOOL.name },
+    const { input: out, response } = await callTool({
+      max_tokens: 16000,
+      system: `Du läser av bokryggar på foton. Svara alltid genom att anropa verktyget ${TOOL.name}.`,
       messages: [{
         role: "user",
         content: [imageBlock(bytes, mediaType), { type: "text", text: PROMPT(cats) }],
       }],
-    });
-    const out = toolInput(response, TOOL.name);
-    if (!out) throw new Error("Avläsningen gav inget resultat.");
+    }, TOOL);
 
     // deno-lint-ignore no-explicit-any
     const books: any[] = Array.isArray(out.books) ? out.books : [];

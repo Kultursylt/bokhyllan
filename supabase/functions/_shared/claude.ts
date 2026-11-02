@@ -42,6 +42,28 @@ export async function claude(req: ClaudeRequest): Promise<Block> {
   return data;
 }
 
+/**
+ * Ber Claude svara genom ett visst verktyg och returnerar verktygets indata.
+ *
+ * Alla modeller stöder inte tvingat verktygsval (tool_choice "tool"), så vi
+ * låter modellen välja själv och påminner en gång om den svarar med text.
+ */
+export async function callTool(
+  req: Omit<ClaudeRequest, "tools" | "tool_choice">,
+  tool: Block,
+): Promise<{ input: Block; response: Block }> {
+  const messages = [...req.messages];
+  let response: Block = null;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    response = await claude({ ...req, messages, tools: [tool] });
+    const input = toolInput(response, tool.name);
+    if (input) return { input, response };
+    if (response.content?.length) messages.push({ role: "assistant", content: response.content });
+    messages.push({ role: "user", content: `Svara nu genom att anropa verktyget ${tool.name}.` });
+  }
+  throw new Error("Claude svarade inte i rätt format — försök igen.");
+}
+
 /** Hämtar indata från första anropet av ett visst verktyg i svaret. */
 export function toolInput(response: Block, name: string): Block | null {
   const block = (response?.content ?? []).find(
