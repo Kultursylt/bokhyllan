@@ -1667,3 +1667,8 @@ body.har-remsa .toast{bottom:calc(var(--nav-h) + env(safe-area-inset-bottom,0px)
 .sell-sum-lankar{display:flex;flex-direction:column;gap:4px;align-items:flex-start;margin-top:6px}
 .sell-sum-lankar .link-btn{font-size:14px}
 .sell-sortera{margin-left:10px;color:var(--ink-500)}
+/* Sorteringens snabbknappar (Thomas 2/11) - samma hs-chip som kategorierna,
+   bara tätare eftersom raden ligger direkt under "Visar X böcker" och inte
+   ska ta lika mycket höjd. */
+.sell-sort-chips{margin:0 0 12px}
+.sell-sort-chips .hs-chip{padding:6px 12px;font-size:12.5px}

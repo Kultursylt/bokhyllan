@@ -337,7 +337,16 @@ Deno.serve(async (req) => {
         item = created;
       }
 
-      const redanSokt = item.price_status === "bekraftat" || item.price_status === "automatiskt";
+      /* Flödesrapporten 31/10, punkt 9: "manuellt" (ett pris Thomas själv
+         skrivit in för hand, via smpSave) skyddades inte här - bara
+         bekraftat/automatiskt. En ny körning kunde alltså tyst skriva
+         över ett pris en människa skrivit in, utan confirm_overwrite,
+         och sell_price_history fick den gamla raden men UI:t visade bara
+         den nya (eller "-" om inget nytt hittades). Ett manuellt pris är
+         minst lika säkert som ett sökträff-pris ingen kontrollerat, så
+         det hör till samma skydd. */
+      const redanSokt = item.price_status === "bekraftat" || item.price_status === "automatiskt" ||
+        item.price_status === "manuellt";
       if (redanSokt && !confirmOverwrite) {
         resultat.push({ book_id: book.id, status: "skippad_skyddad", price_status: item.price_status });
         continue;
@@ -472,8 +481,18 @@ Deno.serve(async (req) => {
           { onConflict: "sell_item_id,site" },
         );
       }
+      /* Codex-fynd i PR 126 (2/11): estimated_value sätts bara av smpSave,
+         alltid tillsammans med price_status "manuellt" (det manuella
+         prisfältet i appen). Skriver en ny sökning över det - vilket nu
+         kan hända, eftersom "manuellt" sedan samma PR är skyddat men inte
+         OSKRIVBART med confirm_overwrite - måste den gamla manuella
+         siffran nollas här. Annars vinner den kvardröjande estimated_value
+         över det nya priset i vardPris() (estimated_value→low→price_high
+         →price_low), och raden visar det GAMLA manuella priset trots att
+         källorna och sökresultatet redan säger ett nytt. */
       await sb.from("sell_items").update({
         price_status: nyStatus, price_low: nyLow, price_high: nyHigh, searched_at: new Date().toISOString(),
+        estimated_value: null,
       }).eq("id", item.id);
 
       resultat.push({ book_id: book.id, status: nyStatus, low: nyLow, high: nyHigh, avlast: avlastSkal || undefined });

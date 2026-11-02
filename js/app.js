@@ -1,6 +1,6 @@
 (async()=>{
 window.__appStarted=true;
-const DV="?v=20261031223306";
+const DV="?v=20261102111727";
 const SB_URL="https://zuesxdqifsnvhleiukum.supabase.co";
 const SB_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp1ZXN4ZHFpZnNudmhsZWl1a3VtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc2OTAxNjcsImV4cCI6MjEwMzI2NjE2N30.PyutAHmY_he3VoPTT7r67oHOY5P75YpQSThqy4mO8ZI";
 let sbOnline=true;
@@ -2940,11 +2940,28 @@ function renderSell(){
      kategorifiltret behöver den - sell_items har ingen egen kategori. */
   const bokFor=it=>(it.book_id&&data.find(x=>x.id===it.book_id))||
     (it.match_title&&(data.find(x=>x.title===it.match_title)||data.find(x=>x.title.startsWith(it.match_title))))||null;
-  /* Sortering (30/10). Hetta rankas het > medel > låg; "stabil" och
-     tomt faller till medel så att en rad utan hetta inte hamnar först. */
+  /* Sortering (30/10, utökad 2/11 med författare och senast värderad -
+     Thomas: snabbknappar i vyn för namn/författare/pris/datum). Hetta
+     rankas het > medel > låg; "stabil" och tomt faller till medel så att
+     en rad utan hetta inte hamnar först. Böcker utan författare/datum
+     sorteras sist i de respektive lägena i stället för att hamna först
+     på en tom sträng/odefinierat tal. */
   const hettaRang=it=>({het:3,medel:2,stabil:2,lag:1})[it.heat_score||it.heat]||2;
+  const forfOf=it=>{const b=bokFor(it);return b&&b.author?String(b.author).trim():""};
   let items=s.items.slice().sort(
     sellSort==="titel"?(a,b)=>String(a.title||"").localeCompare(String(b.title||""),"sv"):
+    sellSort==="forfattare"?(a,b)=>{
+      const fa=forfOf(a),fb=forfOf(b);
+      if(!fa&&!fb)return String(a.title||"").localeCompare(String(b.title||""),"sv");
+      if(!fa)return 1;if(!fb)return -1;
+      return fa.localeCompare(fb,"sv")||String(a.title||"").localeCompare(String(b.title||""),"sv");
+    }:
+    sellSort==="datum"?(a,b)=>{
+      const ta=a.searched_at?new Date(a.searched_at).getTime():NaN,tb=b.searched_at?new Date(b.searched_at).getTime():NaN;
+      if(isNaN(ta)&&isNaN(tb))return String(a.title||"").localeCompare(String(b.title||""),"sv");
+      if(isNaN(ta))return 1;if(isNaN(tb))return -1;
+      return tb-ta;
+    }:
     sellSort==="hetta"?(a,b)=>hettaRang(b)-hettaRang(a)||val(b)-val(a):
     (a,b)=>val(b)-val(a));
   if(sellQ){const nq=sellQ.toLowerCase();items=items.filter(it=>String(it.title||"").toLowerCase().includes(nq))}
@@ -3028,10 +3045,15 @@ function renderSell(){
          egen färg, och ingen hetta-etikett (hettan kommer ur en
          bedömning som aldrig kördes för den här raden). */
       const manuellt=it.price_status==="manuellt";
+      /* Flödesrapporten 31/10, punkt 12: raden läste it.price_low direkt
+         medan totalsumman (vardTotal, via vardPris) kunde falla tillbaka
+         på ett annat fält (estimated_value eller price_high) för samma
+         rad - radens "ca"-pris och dess bidrag till summan kunde alltså
+         tyst visa olika tal. Nu läser raden samma funktion som summan. */
       const priceLabel=
         vantar?"–":
         osakert&&it.price_low!=null&&it.price_high!=null?`${fmtN(it.price_low)}–${fmtN(it.price_high)} kr`:
-        auto?`ca ${fmtN(it.price_low!=null?it.price_low:it.estimated_value)} kr`:
+        auto?`ca ${fmtN(vardPris(it))} kr`:
         it.estimated_value!=null?`${fmtN(it.estimated_value)} kr`:shortPrice(it.price);
       const statusBadge=
         auto?`<span class="u" style="color:var(--ink-500)">Okontrollerat</span>`:
@@ -3139,6 +3161,11 @@ window.smpSave=smpSave;
    takt med filtren. Kallas från renderSell() med antalet träffar före
    antalsbegränsningen, så texten kan säga hur många som finns. */
 function sellSyncUI(totalt){
+  /* Sorteringens snabbknappar (2/11): tänd den som matchar sellSort, släck
+     resten - annars kan "on" bli kvar på fel knapp efter en programmatisk
+     ändring av sellSort (t.ex. om den nollställs någon annanstans). */
+  document.querySelectorAll('#sellSortChips button[data-sort]').forEach(b=>
+    b.classList.toggle("on",b.dataset.sort===(sellSort||"varde")));
   const aktiv=!!(sellUnc||sellHeat||sellCat||sellStatus||sellKat);
   /* Filterarket (Design 31/10) öppnas/stängs via sellFiltersOppna, precis
      som appens övriga bottensheet (.sheet/.scrim .open) - inte längre en
@@ -3220,7 +3247,14 @@ document.getElementById("sellFilterClearBtn")?.addEventListener("click",()=>{
 });
 document.getElementById("sellQ")?.addEventListener("input",e=>{sellQ=e.target.value;renderSell()});
 document.getElementById("sellLimit")?.addEventListener("change",e=>{sellLimit=Number(e.target.value)||0;renderSell()});
-document.getElementById("sellSort")?.addEventListener("change",e=>{sellSort=e.target.value||"varde";renderSell()});
+/* Sorteringens snabbknappar (2/11) ersätter den gamla <select id="sellSort">.
+   Delegerad klickhanterare, inte en per knapp, eftersom knapparna ligger
+   fasta i markupen (till skillnad från kategorichipsen, som byggs om per
+   bibliotek) - samma mönster hade fungerat lika bra här, men behövs inte. */
+document.getElementById("sellSortChips")?.addEventListener("click",e=>{
+  const b=e.target.closest("button[data-sort]");if(!b)return;
+  sellSort=b.dataset.sort||"varde";renderSell();
+});
 document.getElementById("sellInfoBtn")?.addEventListener("click",()=>{
   const p=document.getElementById("sellInfoPanel");if(p)p.open=!p.open});
 document.getElementById("sellClearBtn")?.addEventListener("click",async()=>{
@@ -3232,8 +3266,25 @@ document.getElementById("sellClearBtn")?.addEventListener("click",async()=>{
   SELL={items:[],summary:null,note:"",updated:""};SELL_PRICES={};renderSell();
 });
 async function loadSell(){
-  const {data:items,error:e1}=await sb.from("sell_items").select("*").order("id");
-  if(e1){console.warn("sell_items",e1);return}
+  /* Flödesrapporten 31/10, punkt 11: loadManualBooks fick 401-återförsöket
+     i PR 30/10 (session hinner inte förnyas innan frågan går iväg vid
+     uppstart), men den här frågan missade samma fix. Resultatet: Värdera
+     kunde visa "0 värderade" trots att dussintals rader fanns, utan
+     felmeddelande, för att felet bara lästes av console.warn och aldrig
+     gav ett nytt försök. Samma mönster som loadManualBooks: läs felet,
+     förnya sessionen, försök igen (högst tre gånger). */
+  let items=null,e1=null;
+  for(let f=0;f<3;f++){
+    ({data:items,error:e1}=await sb.from("sell_items").select("*").order("id"));
+    if(!e1)break;
+    console.warn("sell_items försök "+(f+1),e1);
+    await new Promise(r=>setTimeout(r,600));
+    try{
+      if(f===0&&sb.auth.getSession)await sb.auth.getSession();
+      else if(sb.auth.refreshSession)await sb.auth.refreshSession();
+    }catch(e){console.warn("förnya session",e)}
+  }
+  if(e1){console.warn("sell_items",e1);toast("Kunde inte läsa in Värdera just nu. Ladda om appen.");return}
   const {data:metaRows,error:e2}=await sb.from("sell_meta").select("*").limit(1);
   if(e2)console.warn("sell_meta",e2);
   const ids=(items||[]).map(it=>it.id);
@@ -3260,7 +3311,7 @@ function vardMatches(){
   return data.filter(d=>{
     const it=sellForBook(d),status=it?it.price_status:null;
     if(vardSelStatus==="aldrig"){if(status)return false}
-    else if(vardSelStatus==="redan"){if(status!=="bekraftat"&&status!=="automatiskt")return false}
+    else if(vardSelStatus==="redan"){if(status!=="bekraftat"&&status!=="automatiskt"&&status!=="manuellt")return false}
     else if(vardSelStatus&&status!==vardSelStatus)return false;
     if(vardSelCats.size&&!vardSelCats.has(d.cat))return false;
     if(vardQ2){const nq=vardQ2.toLowerCase();
@@ -3280,7 +3331,9 @@ function vardUrval(){
 }
 function vardSyncCount(){
   const full=vardMatches(),u=vardUrval();
-  const redan=u.filter(d=>{const it=sellForBook(d);return it&&(it.price_status==="bekraftat"||it.price_status==="automatiskt")}).length;
+  /* Punkt 9: manuellt hör till samma skydd som bekraftat/automatiskt - se
+     kommentaren vid redanSokt i prissok. */
+  const redan=u.filter(d=>{const it=sellForBook(d);return it&&(it.price_status==="bekraftat"||it.price_status==="automatiskt"||it.price_status==="manuellt")}).length;
   const utanForf=u.filter(d=>!String(d.author||"").trim()).length;
   const begransat=vardLimit>0&&vardLimit<full.length;
   const rader=[begransat?`${u.length} av ${full.length} böcker`:`${u.length} böcker valda`];
@@ -3438,7 +3491,7 @@ document.getElementById("vardRunBtn")?.addEventListener("click",async()=>{
      oavsiktligt korrekt för just det filtret men fel för "Alla"/"Redan
      värderad" - där inget faller ur. */
   const totalFore=vardMatches().length;
-  const redan=m.filter(d=>{const it=sellForBook(d);return it&&(it.price_status==="bekraftat"||it.price_status==="automatiskt")});
+  const redan=m.filter(d=>{const it=sellForBook(d);return it&&(it.price_status==="bekraftat"||it.price_status==="automatiskt"||it.price_status==="manuellt")});
   let confirmOverwrite=false;
   if(redan.length){
     const flera=m.length>1;
@@ -3458,7 +3511,11 @@ document.getElementById("vardRunBtn")?.addEventListener("click",async()=>{
      skjuter upp en automatisk omladdning medan den pågår. */
   vardKor={klara:0,totalt:ids.length,pagar:true};
   vardKlar=null;window.__vardKorPagar=true;renderKorRemsa();
-  const antal={automatiskt:0,vantar:0,osakert:0,ingen_traff:0,skippad_skyddad:0,fel:0};
+  /* Flödesrapporten 31/10, punkt 8: ingen_begagnad fanns inte som nyckel
+     här (status lades till 31/10 för "sidan hittad, bara nypris finns"),
+     så de böckerna försvann tyst ur både lyckade och misslyckade antal -
+     resultatraden summerade inte till antalet körda böcker. */
+  const antal={automatiskt:0,vantar:0,osakert:0,ingen_traff:0,ingen_begagnad:0,skippad_skyddad:0,fel:0};
   let i=0;
   for(;i<ids.length;i+=25){
     if(vardAvbryt)break;
@@ -3484,6 +3541,7 @@ document.getElementById("vardRunBtn")?.addEventListener("click",async()=>{
   if(antal.vantar)delar.push(`${antal.vantar} väntar på kontroll`);
   if(antal.osakert)delar.push(`${antal.osakert} varierande`);
   if(antal.ingen_traff)delar.push(`${antal.ingen_traff} inget hittat`);
+  if(antal.ingen_begagnad)delar.push(`${antal.ingen_begagnad} bara nypris`);
   if(antal.skippad_skyddad)delar.push(`${antal.skippad_skyddad} hoppades över`);
   if(antal.fel)delar.push(`${antal.fel} fel`);
   /* Punkt 6: hur mycket som återstår i samma filterurval, bara när

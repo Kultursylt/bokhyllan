@@ -23,7 +23,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Raleway:wght@600;700&family=Montserrat:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&family=Cormorant+Garamond:ital,wght@1,500&family=Poiret+One&family=Pinyon+Script&family=Cinzel:wght@500&display=swap">
 <title>Bokhyllan</title>
-<link rel="stylesheet" href="css/style.css?v=20261031223306">
+<link rel="stylesheet" href="css/style.css?v=20261102111727">
 <link rel="icon" type="image/png" sizes="32x32" href="img/icon-32.png">
 <link rel="apple-touch-icon" href="img/icon-180.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -39,7 +39,7 @@
    MY, version.json och ?v= i den här filen ska alltid ha samma värde
    (starttestet kontrollerar det). */
 (function(){
-  var MY="20261031223306";
+  var MY="20261102111727";
   function typing(){
     var a=document.activeElement;
     return !!(a&&(a.tagName==="TEXTAREA"||(a.tagName==="INPUT"&&a.type!=="checkbox"))&&a.value);
@@ -535,12 +535,18 @@
       <option value="25">25</option><option value="50">50</option>
       <option value="100">100</option><option value="0" selected>alla</option>
     </select>
-    böcker<span class="sell-sortera">sorterat på
-      <select id="sellSort" aria-label="Sortera listan">
-        <option value="varde" selected>värde</option>
-        <option value="hetta">hetta</option>
-        <option value="titel">titel</option>
-      </select></span></p>
+    böcker</p>
+  <!-- Snabbknappar för sortering (Thomas 2/11), ersätter den gamla
+       sorterings-selecten: samma sortering som fanns (värde/hetta/titel)
+       plus författare och senast värderad, men en knapptryckning i stället
+       för att öppna en dropdown. -->
+  <div class="hs-chips sell-sort-chips" id="sellSortChips" role="group" aria-label="Sortera listan">
+    <button class="hs-chip" type="button" data-sort="titel">Namn</button>
+    <button class="hs-chip" type="button" data-sort="forfattare">Författare</button>
+    <button class="hs-chip on" type="button" data-sort="varde">Pris</button>
+    <button class="hs-chip" type="button" data-sort="datum">Senast värderad</button>
+    <button class="hs-chip" type="button" data-sort="hetta">Hetta</button>
+  </div>
   <div id="sellList"></div>
   <p id="sellNote" class="fine"></p>
   <div class="sell-empty-msg" id="sellEmptyMsg" style="display:none">Listan är tom. Be Claude köra en ny värderingsrunda, så fylls den igen.</div>
@@ -802,6 +808,6 @@
 <input type="file" accept="image/*" id="ppFile" hidden>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
-<script src="js/app.js?v=20261031223306"></script>
+<script src="js/app.js?v=20261102111727"></script>
 </body>
 </html>
