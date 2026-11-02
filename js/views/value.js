@@ -29,7 +29,7 @@ export function render(root) {
       h("section.card.stack",
         h("h2", "Värdera fler"),
         h("p.muted.small",
-          "Varje bok söks upp på Bokbörsen, Antikvariat.net, Studentapan, Tradera m.fl. Kostar ungefär 0,50–1 kr per bok i API-avgift. ",
+          "Varje bok söks upp på Bokbörsen och andra antikvariat (Studentapan för kurslitteratur). Kostar ungefär 0,50–1 kr per bok i API-avgift. ",
           "Tips: börja med kurslitteratur, äldre böcker och dubbletter."),
         h("div.row",
           select([["5", "5 böcker"], ["10", "10 böcker"], ["25", "25 böcker"]], opts.batch, (v) => { opts.batch = v; }),

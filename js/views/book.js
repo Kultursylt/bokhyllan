@@ -61,10 +61,14 @@ export function render(root, { id }) {
       h("section.card.stack",
         h("h2", "Värde"),
         v ? valuationBlock(v) : h("p.muted", "Inte värderad än."),
-        busyButton(v ? "Värdera igen" : "Värdera (söker på Bokbörsen, Tradera m.fl.)", async () => {
+        busyButton(v ? "Värdera igen" : "Värdera (söker på Bokbörsen och antikvariat)", async () => {
           const res = await callFn("valuate", { work_id: w.id });
           store.rememberValuation(res);
-        }, { busyLabel: "Söker priser… (ca 30 s)" })),
+        }, { busyLabel: "Söker priser… (ca 30 s)" }),
+        h("a.small", {
+          href: `https://www.bokborsen.se/?q=${encodeURIComponent(w.isbn ?? `${w.title} ${w.authors[0] ?? ""}`.trim())}`,
+          target: "_blank", rel: "noopener",
+        }, "Se själv på Bokbörsen ↗")),
 
       h("section.stack",
         h("button.danger.ghost", {

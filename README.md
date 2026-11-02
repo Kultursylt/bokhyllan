@@ -22,7 +22,7 @@ Fungerar i webbläsaren på dator och kan installeras som app på Android.
 3. **Hylla** – sök och filtrera på plats, kategori och status (på plats, utlånad till…).
 4. **Ordna** – överblick (ej verifierade, utan plats, dubbletter, utlånat) och förslag
    på ny ordning med en flyttlista, hylla för hylla.
-5. **Värde** – webbsökning på Bokbörsen, Antikvariat.net, Studentapan, Tradera m.fl.
+5. **Värde** – webbsökning i första hand på Bokbörsen och andra antikvariat (Studentapan för kurslitteratur)
    ger ett prisintervall, bästa säljkanal och källor per bok.
 6. **Lägg till enstaka böcker** – skanna streckkoden (ISBN) med mobilkameran
    eller sök på titel.

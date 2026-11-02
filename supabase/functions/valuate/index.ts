@@ -1,5 +1,9 @@
-// Uppskattar begagnatvärdet på en bok med webbsökning på svenska
-// begagnat- och bokhandelssajter, och sparar resultatet med källor.
+// Uppskattar begagnatvärdet på en bok med webbsökning — i första hand på
+// Bokbörsen och andra antikvariat — och sparar resultatet med källor.
+//
+// Ingen fast sajtlista skickas till sökverktyget: om en enda sajt i en sådan
+// lista inte får läsas av Anthropics sökning avvisas hela anropet. Prioriteringen
+// sköts i stället av instruktionen nedan.
 //
 // POST { work_id: uuid }
 // Svar: valuations-raden.
@@ -9,11 +13,6 @@
 
 import { asCaller, HttpError, json, serve } from "../_shared/http.ts";
 import { claude, toolInput } from "../_shared/claude.ts";
-
-const DOMAINS = [
-  "bokborsen.se", "antikvariat.net", "studentapan.se", "tradera.com", "blocket.se",
-  "adlibris.com", "bokus.com", "akademibokhandeln.se", "campusbokhandeln.se", "abebooks.com",
-];
 
 const REPORT = {
   name: "report_value",
@@ -25,7 +24,7 @@ const REPORT = {
       high: { type: "integer", description: "Hög uppskattning i kronor." },
       best_channel: {
         type: "string",
-        enum: ["Bokbörsen", "Antikvariat", "Studentapan", "Tradera", "Blocket", "Bokcirkel/loppis", "Ej värd att sälja"],
+        enum: ["Bokbörsen", "Antikvariat", "Studentapan", "Tradera", "Bokcirkel/loppis", "Ej värd att sälja"],
       },
       confidence: { type: "string", enum: ["låg", "medel", "hög"] },
       summary: { type: "string", description: "1–3 meningar: vad priset bygger på, upplagans betydelse, efterfrågan." },
@@ -54,20 +53,25 @@ serve(async (req, body) => {
   ].filter(Boolean).join("\n");
 
   const system = `Du värderar begagnade böcker för en privatperson i Sverige.
-Sök efter faktiska annonser och priser för just den här boken, helst samma upplaga/ISBN.
-Ange vad en säljare realistiskt får för ett ex i normalt skick — inte nypris och inte
-det högsta utropspriset. Kurslitteratur säljs bäst via Studentapan om den är aktuell
-upplaga. Ovanliga eller äldre böcker via Bokbörsen/antikvariat. Är boken vanlig och
-billig: säg det ärligt (best_channel "Ej värd att sälja" eller "Bokcirkel/loppis").
-Hittar du inga jämförbara priser: gör en försiktig bedömning och sätt confidence "låg".
-Avsluta alltid med verktyget report_value.`;
+
+Sök i den här ordningen:
+1. Bokbörsen (bokborsen.se) — Sveriges största marknad för antikvariska och begagnade
+   böcker. Sök på ISBN om det finns, annars titel + författare. Detta är huvudkällan.
+2. Andra antikvariat: antikvariat.net, och vid behov AbeBooks för utländska böcker.
+3. Bara för kurslitteratur i aktuell upplaga: Studentapan.
+
+Ange vad en säljare realistiskt får för ett ex i normalt skick: utgå från de LÄGRE
+utbudspriserna för samma upplaga (många exemplar ligger ute länge utan att säljas),
+inte nypris och inte det högsta utropspriset. Finns boken i mängder för 30–50 kr är
+den inte värd att sälja styckvis — säg det ärligt ("Ej värd att sälja" eller
+"Bokcirkel/loppis"). Hittar du inga jämförbara priser: gör en försiktig bedömning
+och sätt confidence "låg". Avsluta alltid med verktyget report_value.`;
 
   const tools = [
     {
       type: "web_search_20250305",
       name: "web_search",
       max_uses: 4,
-      allowed_domains: DOMAINS,
       user_location: { type: "approximate", country: "SE", timezone: "Europe/Stockholm" },
     },
     REPORT,
@@ -81,7 +85,15 @@ Avsluta alltid med verktyget report_value.`;
   const sources = new Map<string, any>();
 
   for (let turn = 0; turn < 4; turn++) {
-    response = await claude({ system, messages, tools, max_tokens: 3000 });
+    try {
+      response = await claude({ system, messages, tools, max_tokens: 8000 });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (/web search/i.test(msg) && /not enabled|disabled/i.test(msg)) {
+        throw new Error("Webbsökning är avstängd i ditt Anthropic-konto — slå på den under Settings → Capabilities (eller Privacy) i console.anthropic.com.");
+      }
+      throw e;
+    }
     for (const b of response.content ?? []) {
       if (b.type === "web_search_tool_result" && Array.isArray(b.content)) {
         for (const r of b.content) {
